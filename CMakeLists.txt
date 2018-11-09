@@ -1,0 +1,40 @@
+cmake_minimum_required(VERSION 2.8)
+project(UncertainVortexCores)
+
+set(CMAKE_CXX_STANDARD 14)
+#set(CMAKE_BUILD_TYPE RELEASE)
+set(CMAKE_CXX_FLAGS "-march=native")
+set(CMAKE_BUILD_TYPE DEBUG)
+set(CMAKE_CXX_FLAGS "-Wno-narrowing")
+set(CMAKE_CXX_FLAGS "-ggdb3")
+set(CMAKE_CXX_FLAGS "-Og")
+find_package(Eigen3 REQUIRED)
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/../../libs/linalg)
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/../../libs/3Party/catch)
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/../../libs/3Party/EigenInitList)
+INCLUDE_DIRECTORIES(${EIGEN3_INCLUDE_DIR})
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR}/../../libs/geometry)
+INCLUDE_DIRECTORIES(${CMAKE_CURRENT_SOURCE_DIR})
+SET(CMAKE_PREFIX_PATH ${CMAKE_CURRENT_SOURCE_DIR}/../../Paraview5_2bin)
+find_package(OpenMP)
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fopenmp")
+
+SET(MASTER_BUILD FALSE)
+IF(NOT MASTER_BUILD)
+    IF (ParaView_SOURCE_DIR)
+        INCLUDE_DIRECTORIES(
+                ${VTK_INCLUDE_DIRS}
+        )
+    ELSE (ParaView_SOURCE_DIR)
+        FIND_PACKAGE(ParaView REQUIRED)
+        INCLUDE(${PARAVIEW_USE_FILE})
+    ENDIF (ParaView_SOURCE_DIR)
+ENDIF(NOT MASTER_BUILD)
+
+ADD_PARAVIEW_PLUGIN(UncertainVortexCores "1.0"
+        SERVER_MANAGER_XML
+        UncertainVortexCores_Server.xml
+        SERVER_MANAGER_SOURCES
+        UncertainVortexCores.cpp
+        SOURCES ${SOURCE_FILES})

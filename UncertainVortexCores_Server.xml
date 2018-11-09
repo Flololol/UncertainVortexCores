@@ -1,0 +1,70 @@
+<ServerManagerConfiguration>
+    <ProxyGroup name="filters">
+        <!-- ================================================================== -->
+        <SourceProxy name="UncertainVortexCores" class="UncertainVortexCores" label="Uncertain Vortex Cores">
+            <Documentation
+                    long_help="Computes Vortex Cores of Uncertain Vectorfields."
+                    short_help="Computes Vortex Cores.">
+            </Documentation>
+
+            <InputProperty
+                    name="Input"
+                    port_index="0"
+                    command="SetInputConnection">
+                <ProxyGroupDomain name="groups">
+                    <Group name="sources"/>
+                    <Group name="filters"/>
+                </ProxyGroupDomain>
+                <DataTypeDomain name="input_type">
+                    <DataType value="vtkImageData"/>
+                </DataTypeDomain>
+                <InputArrayDomain name="input_array1" attribute_type="point" number_of_components="3">
+	                <RequiredProperties>
+                        <Property name="SelectInputVectors" function="FieldDataSelection"/>
+                    </RequiredProperties>
+	            </InputArrayDomain>
+            </InputProperty>
+
+            <IntVectorProperty
+                    name="Number Samples"
+                    command="SetnumOfSamples"
+                    number_of_elements="1"
+                    default_values="20">
+        <Documentation>
+        Number of Monte-Carlo-Samples
+        </Documentation>
+            </IntVectorProperty>
+
+            <IntVectorProperty
+                    name="Use Random Seed"
+                    command="SetuseRandomSeed"
+                    number_of_elements="1"
+                    default_values="0">
+                <BooleanDomain name="bool"/>
+
+        <Documentation>
+        Use a random seed for the sample generation
+        </Documentation>
+
+            </IntVectorProperty>
+
+            <IntVectorProperty
+                    name="Use Cholesky"
+                    command="SetuseCholesky"
+                    number_of_elements="1"
+                    default_values="0">
+                <BooleanDomain name="bool"/>
+
+        <Documentation>
+        Use Cholesky decomposition instead of eigenvectormatrices for the Monte-Carlo sampling
+        </Documentation>
+
+            </IntVectorProperty>
+
+            <OutputPort name="Vortex Core Lines" index="0" id="port0"/>
+
+        </SourceProxy>
+        <!-- End Reader -->
+    </ProxyGroup>
+    <!-- End Filters Group -->
+</ServerManagerConfiguration>
