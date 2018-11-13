@@ -27,7 +27,7 @@
 
             <IntVectorProperty
                     name="Number Samples"
-                    command="SetnumOfSamples"
+                    command="SetnumSamples"
                     number_of_elements="1"
                     default_values="20">
         <Documentation>

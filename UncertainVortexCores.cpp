@@ -57,34 +57,36 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
     //moved here from RequestUpdateExtent, maybe move somewhere else 
     //inInfo->Set(vtkStreamingDemandDrivenPipeline::UPDATE_EXTENT(), extent, 6);
     vtkSmartPointer<vtkMultiBlockDataSet> input = vtkMultiBlockDataSet::SafeDownCast(inInfo->Get(vtkDataObject::DATA_OBJECT()));
-    int numVecFields = input->GetNumberOfBlocks();
+    this->numFields = input->GetNumberOfBlocks();
 
     this->data = vtkSmartPointer<vtkImageData>::New();
     data->ShallowCopy(vtkImageData::SafeDownCast(input->GetBlock(0)));
 
-    spacing = data->GetSpacing();
-    int *gridResolution;
-    gridResolution = data->GetDimensions();
-    int arrayLength = gridResolution[0] * gridResolution[1] * gridResolution[2];
-    int offsetY = gridResolution[0];
-    int offsetZ = gridResolution[0]*gridResolution[1];
+    this->spacing = data->GetSpacing();
+    this->gridResolution = data->GetDimensions();
+    this->arrayLength = gridResolution[0] * gridResolution[1] * gridResolution[2];
+    this->offsetY = gridResolution[0];
+    this->offsetZ = gridResolution[0]*gridResolution[1];
+
+    int coutStep = int(double(arrayLength) / 100.0);
+    if(coutStep == 0) coutStep = 1;
     
-    std::vector<std::vector<Vector96d>> accumulatedVecField(numVecFields, std::vector<Vector96d>(arrayLength, Vector96d::Zero()));
+    /* std::vector<std::vector<Vector96d>> accumulatedVecField(numFields, std::vector<Vector96d>(arrayLength, Vector96d::Zero()));
     std::vector<Vector96d> meanVectors(arrayLength, Vector96d::Zero());
     std::vector<Matrix96c> eigenvectorField(arrayLength, Matrix96c::Zero());
-    std::vector<std::vector<Vector96d>> sampleField(arrayLength, std::vector<Vector96d>(numOfSamples, Vector96d::Zero()));
-    std::vector<Matrix96d> choleskyField(arrayLength, Matrix96d::Zero());
+    std::vector<std::vector<Vector96d>> sampleField(arrayLength, std::vector<Vector96d>(numSamples, Vector96d::Zero()));
+    std::vector<Matrix96d> choleskyField(arrayLength, Matrix96d::Zero()); */
 
     //clock for random seed and calculation time
     beginning = nanoClock::now();
 
     //std::vector<Matrix96d> covarianceField(arrayLength, Matrix96d::Zero());
-    //std::vector<std::vector<Vector96d>> sampleField2(arrayLength, std::vector<Vector96d>(numOfSamples, Vector96d::Zero()));
-    //std::vector<std::vector<Vector96d>> normalVecField(arrayLength, std::vector<Vector96d>(numOfSamples, Vector96d::Zero()));
+    //std::vector<std::vector<Vector96d>> sampleField2(arrayLength, std::vector<Vector96d>(numSamples, Vector96d::Zero()));
+    //std::vector<std::vector<Vector96d>> normalVecField(arrayLength, std::vector<Vector96d>(numSamples, Vector96d::Zero()));
     //std::vector<Eigen::EigenSolver<Matrix96d>> eigensolverField(arrayLength);
-    //std::vector<std::vector<std::vector<double>>> testVectors(numVecFields, std::vector<std::vector<double>>(arrayLength, std::vector<double>(3, 0.0)));    
+    //std::vector<std::vector<std::vector<double>>> testVectors(numFields, std::vector<std::vector<double>>(arrayLength, std::vector<double>(3, 0.0)));    
 
-    /* for(int field = 0; field < numVecFields; field++){
+    /* for(int field = 0; field < numFields; field++){
         vtkSmartPointer<vtkDoubleArray> temptest = vtkSmartPointer<vtkDoubleArray>::New();
         temptest->DeepCopy((vtkImageData::SafeDownCast(input->GetBlock(field))->GetPointData()->GetScalars()));
         for(int i = 0; i < arrayLength; i++){
@@ -96,9 +98,117 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
         }
     } */
 
-    //Summing up the vectors
+    cellValues = vtkDoubleArray::New();
+    cellValues->SetNumberOfComponents(1);
+    cellValues->SetNumberOfTuples(arrayLength);
+    cellValues->SetName(this->cellValuesName);
+    int calcMean = 0;
+    #pragma omp parallel for
+    for(int pointIndex = 0; pointIndex < arrayLength; pointIndex++){
+        std::vector<Vector96d> neighborhood = std::vector<Vector96d>(numFields, Vector96d::Zero());
+        Vector96d meanVector = Vector96d::Zero();
+        Matrix96d decomposition = Matrix96d::Zero();
+
+        ++calcMean;
+        if(calcMean % coutStep == 0){
+            std::chrono::duration<double> calcTime = beginning - nanoClock::now();
+            int prog = int((double(calcMean) / double(arrayLength))*100);
+            double ETR = (double(calcTime.count())/prog) * (100 - prog);
+            cout << '\r' << std::flush;
+            cout << "Prog:" << prog << "%, ETR:" << ETR << "s";
+        }
+
+        if(isCloseToEdge(pointIndex)){
+            cellValues->SetTuple1(pointIndex, 0.0);
+            continue;
+        }
+
+        std::set<int> indices; //set only contains a single instance of any entitiy
+
+        int nodes[8] = {pointIndex, pointIndex+1, pointIndex+offsetY, pointIndex+offsetY+1, pointIndex+offsetZ,
+                            pointIndex+offsetZ+1, pointIndex+offsetY+offsetZ, pointIndex+offsetY+offsetZ+1};
+        
+        for (int i = 0; i < 8; i++){
+            int point = nodes[i];
+            int adjacentPoints[7] = {point, point-1, point+1, point-offsetY, point+offsetY, point-offsetZ, point+offsetZ};
+            for(int j = 0; j < 7; j++){
+                indices.insert(adjacentPoints[j]);
+            }
+        }
+        
+        for(int fieldIndex = 0; fieldIndex < numFields; fieldIndex++){
+            int c = 0;
+            for(auto it = indices.begin(); it != indices.end(); it++, c++){
+                double transfer[3];
+                int ind = *it;
+                //Calculating mean vec
+                (vtkImageData::SafeDownCast(input->GetBlock(fieldIndex))->GetPointData()->GetScalars())->GetTuple(ind, transfer);
+
+                meanVector[c*3] += transfer[0];
+                meanVector[(c*3)+1] += transfer[1];
+                meanVector[(c*3)+2] += transfer[2];
+
+                neighborhood[fieldIndex][c*3]= transfer[0];
+                neighborhood[fieldIndex][(c*3)+1]= transfer[1];
+                neighborhood[fieldIndex][(c*3)+2]= transfer[2];
+            }
+        }
+        meanVector = meanVector / double(numFields);
+        Matrix96d covarMat = Matrix96d::Zero();
+        
+        for(int fieldIndex = 0; fieldIndex < numFields; fieldIndex++){
+            Vector96d transferVec = neighborhood[fieldIndex] - meanVector;
+            covarMat += transferVec * transferVec.transpose();
+        }
+
+        covarMat = covarMat / double(numFields);
+
+        if(useCholesky){
+            Eigen::LDLT<Matrix96d> cholesky(covarMat);
+
+            Matrix96d D = Matrix96d::Identity();
+            D.diagonal() = cholesky.vectorD();
+
+            decomposition = cholesky.matrixL() * D;
+        } else {
+            Eigen::EigenSolver<Matrix96d> eigenMat(covarMat, true);
+
+            Matrix96c evDiag = Matrix96c::Identity();
+            evDiag.diagonal() = eigenMat.eigenvalues();
+
+            decomposition = (eigenMat.eigenvectors() * evDiag).real(); //very small (e.g. 10^-16) complex parts are possible, taking real part just to be sure
+        }
+
+        int prob = 0;
+        for (int sampleIteration = 0; sampleIteration < numSamples; sampleIteration++){
+            Vector96d normalVec = generateNormalDistributedVec();
+            Vector96d sample = decomposition * normalVec + meanVector;
+            if(computeParallelVectors(sample)) prob++;
+        }
+        double frequency = double(prob) / double(numSamples);
+        cellValues->SetTuple1(pointIndex, frequency); 
+    }
+
+    vtkSmartPointer<vtkImageData> celldata = vtkSmartPointer<vtkImageData>::New();
+    celldata->CopyStructure(data);
+    celldata->GetPointData()->AddArray(cellValues);
+
+    vtkInformation *outInfo = outputVector->GetInformationObject(0);
+    vtkDataObject *output = vtkDataObject::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
+
+    output->ShallowCopy(celldata);
+    auto t_end = nanoClock::now();
+    std::chrono::duration<double> durationTime = t_end - beginning;
+
+    std::cout << "Uncertain Vortex Core Line calculation finished in " << durationTime.count() << " s." << std::endl;
+
+    return 1;
+}
+    
+
+    /* //Summing up the vectors
     cout << "Calculating mean vectors..." << endl;
-    for(int fieldIndex = 0; fieldIndex < numVecFields; fieldIndex++){
+    for(int fieldIndex = 0; fieldIndex < numFields; fieldIndex++){
 
         vtkSmartPointer<vtkDoubleArray> temp = vtkSmartPointer<vtkDoubleArray>::New();
         temp->ShallowCopy((vtkImageData::SafeDownCast(input->GetBlock(fieldIndex))->GetPointData()->GetScalars()));
@@ -126,9 +236,9 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
                 int ind = *i;
                 //Calculating mean vec
                 temp->GetTuple(ind, transferVector);
-                meanVectors[currentVec][c*3] += (transferVector[0] / numVecFields);
-                meanVectors[currentVec][(c*3)+1] += (transferVector[1] / numVecFields);
-                meanVectors[currentVec][(c*3)+2] += (transferVector[2] / numVecFields);
+                meanVectors[currentVec][c*3] += (transferVector[0] / numFields);
+                meanVectors[currentVec][(c*3)+1] += (transferVector[1] / numFields);
+                meanVectors[currentVec][(c*3)+2] += (transferVector[2] / numFields);
 
                 accumulatedVecField[fieldIndex][currentVec](c*3) = transferVector[0];
                 accumulatedVecField[fieldIndex][currentVec]((c*3)+1) = transferVector[1];
@@ -151,17 +261,11 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
             cout << "Calculated " << calculated << " Eigenvectors/Cholesky decompositions. The last 1k calculations took " << eigenTime.count() << "s." << endl;
             eigenTimeStart = nanoClock::now();
         }
-        /* Vector96d compareVec = Vector96d::Zero();
-        if(meanVectors[cellIndex] == compareVec){
-            cout << cellIndex << endl;
-            skipped++;
-            continue;
-        } */
         Matrix96d covarMat = Matrix96d::Zero();
         
-        for(int fieldIndex = 0; fieldIndex < numVecFields; fieldIndex++){
+        for(int fieldIndex = 0; fieldIndex < numFields; fieldIndex++){
             Vector96d transferVec = accumulatedVecField[fieldIndex][cellIndex] - meanVectors[cellIndex];
-            covarMat += (transferVec * transferVec.transpose()) / numVecFields;
+            covarMat += (transferVec * transferVec.transpose()) / numFields;
         }
 
         //covarianceField[cellIndex] = covarMat;
@@ -196,7 +300,7 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
     #pragma omp parallel for
     for(int cellIndex = 0; cellIndex < arrayLength; cellIndex++){
         
-        for (int sampleIteration = 0; sampleIteration < numOfSamples; sampleIteration++){
+        for (int sampleIteration = 0; sampleIteration < numSamples; sampleIteration++){
             
             Vector96d normalVec = generateNormalDistributedVec();
             //normalVecField[cellIndex]d[sampleIteration] = normalVec;
@@ -211,17 +315,7 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
     }
     cout << "Done." << endl;
 
-    /* for(int cell = 0; cell < arrayLength; cell++){
-        for(int sample = 0; sample < numOfSamples; sample++){
-            for(int index = 0; index < 96; index++){
-                if(sampleField[cell][sample][index].imag() > 0.0000000000001){
-                    cout << "Found larger imaginary part!" << endl;
-                    cout << cell << " - " << sample << " - " << index << endl;
-                    cout << sampleField[cell][sample][index] << endl;
-                }
-            }
-        }
-    } */
+
 
     cellValues = vtkDoubleArray::New();
     cellValues->SetNumberOfComponents(1);
@@ -235,7 +329,7 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
     for(int cellIndex = 0; cellIndex < arrayLength; cellIndex++){
         parallel = 0;
         frequency = 0.0;
-        for(int sample = 0; sample < numOfSamples; sample++){
+        for(int sample = 0; sample < numSamples; sample++){
             bool hasParallel = false;
             hasParallel = computeParallelVectors(sampleField[cellIndex][sample]);
             if(hasParallel){
@@ -243,9 +337,9 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
                 //cout << "Found parallel vectors" << endl;
             }
         }
-        frequency = double(parallel) / double(numOfSamples);
+        frequency = double(parallel) / double(numSamples);
         if (frequency > 0){
-            cout << cellIndex << ": " << frequency << " - " << parallel << " - " << numOfSamples << endl;
+            cout << cellIndex << ": " << frequency << " - " << parallel << " - " << numSamples << endl;
         }
         cellValues->SetTuple1(cellIndex, frequency);
     }
@@ -264,7 +358,26 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
 
     std::cout << "Uncertain Vortex Core Line calculation finished in " << durationTime.count() << " s." << std::endl;
 
-    return 1;
+    return 1; */
+//}
+
+bool UncertainVortexCores::isCloseToEdge(int index){
+    bool isClose = false;
+
+    //check if index is close to an edge in x direction
+    if(((index+2) % this->offsetY == 0) or (((index+1) % this->offsetY) == 0) or ((index % this->offsetY) == 0)){
+        isClose = true;
+    }
+    //check if index is close to an edge in y direction
+    if(((index % this->offsetZ) < this->offsetY) or ((index % this->offsetZ) >= (this->offsetZ - (this->offsetY*2)))){
+        isClose = true;
+    }
+    //check if index is close to an edge in z direction
+    if((index < offsetZ) or (index >= (arrayLength - (offsetZ*2)))){
+        isClose = true;
+    }
+
+    return isClose;
 }
 
 Vector96d UncertainVortexCores::generateNormalDistributedVec(){
@@ -275,8 +388,8 @@ Vector96d UncertainVortexCores::generateNormalDistributedVec(){
 
     for(int pair = 0; pair < 48; pair++){
             
-        double u1 = randomVecEntry(gen);
-        double u2 = randomVecEntry(gen);
+        double u1 = randomVecEntry(this->gen);
+        double u2 = randomVecEntry(this->gen);
         //Box Muller Transformation
         double z1 = sqrt(-2.0*log(u1))*cos((2*M_PI)*u2);
         double z2 = sqrt(-2.0*log(u1))*sin((2*M_PI)*u2);

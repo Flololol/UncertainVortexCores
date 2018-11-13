@@ -14,12 +14,14 @@
 #include "chrono"
 #include "vector"
 #include <set>
+#include <random>
 
 //Override Eigen standard allocation limit
 #ifndef EIGEN_STACK_ALLOCATION_LIMIT
 #define EIGEN_STACK_ALLOCATION_LIMIT 1000000
 #endif
 #include <Eigen/Eigen>
+#include <Eigen/unsupported/MatrixFunctions>
 #include <omp.h>
 #include "math.h"
 #include "linalg.h"
@@ -48,8 +50,8 @@ public:
     vtkTypeMacro(UncertainVortexCores, vtkMultiTimeStepAlgorithm);
     void PrintSelf(ostream &os, vtkIndent indent) {};
 
-    vtkSetMacro(numOfSamples, int);
-    vtkGetMacro(numOfSamples, int);
+    vtkSetMacro(numSamples, int);
+    vtkGetMacro(numSamples, int);
 
     vtkSetMacro(useRandomSeed, bool);
     vtkGetMacro(useRandomSeed, bool);
@@ -73,9 +75,14 @@ private:
     vtkSmartPointer<vtkImageData> data;
     vtkDoubleArray *cellValues;
 
+    int numFields;
     bool NewtonQuad;
-    int numOfSamples;
+    int numSamples;
     double *spacing;
+    int *gridResolution;
+    int arrayLength;
+    int offsetY;
+    int offsetZ;
     nanoClock::time_point beginning;
     char *cellValuesName;
     bool useRandomSeed;
@@ -89,6 +96,7 @@ private:
     int computeParallelOnCellface(std::vector<Vector3d> cellface, std::vector<Vector3d> cellfaceAcc, double *s, double *t);
     bool interpolatedJacobiIsComplex(Matrix3d jac1, Matrix3d jac2, Matrix3d jac3, double s, double t);
     bool computeParallelVectors(Vector96d sampleVector);
+    bool isCloseToEdge(int index);
 };
 
 #endif
