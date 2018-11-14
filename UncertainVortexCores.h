@@ -20,21 +20,10 @@
 #ifndef EIGEN_STACK_ALLOCATION_LIMIT
 #define EIGEN_STACK_ALLOCATION_LIMIT 1000000
 #endif
-#include <Eigen/Eigen>
-#include <Eigen/unsupported/MatrixFunctions>
+#include <Eigen/Dense>
 #include <omp.h>
 #include "math.h"
 #include "linalg.h"
-
-//#include "VCGJacobi.h"
-//#include "parallelVectors.h"
-//#include "vtkFloatArray.h"
-//#include "vtkDataArray.h"
-//#include "vtkDataSet.h"
-//#include "vtkRectilinearGrid.h"
-//#include "vtkPolyData.h"
-//#include "exception"
-//#include "vtkObjectFactory.h"
 
 typedef Eigen::Matrix<double,3,1> Vector3d;
 typedef Eigen::Matrix<double,3,3> Matrix3d;

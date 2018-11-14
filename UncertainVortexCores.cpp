@@ -70,33 +70,9 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
 
     int coutStep = int(double(arrayLength) / 100.0);
     if(coutStep == 0) coutStep = 1;
-    
-    /* std::vector<std::vector<Vector96d>> accumulatedVecField(numFields, std::vector<Vector96d>(arrayLength, Vector96d::Zero()));
-    std::vector<Vector96d> meanVectors(arrayLength, Vector96d::Zero());
-    std::vector<Matrix96c> eigenvectorField(arrayLength, Matrix96c::Zero());
-    std::vector<std::vector<Vector96d>> sampleField(arrayLength, std::vector<Vector96d>(numSamples, Vector96d::Zero()));
-    std::vector<Matrix96d> choleskyField(arrayLength, Matrix96d::Zero()); */
 
     //clock for random seed and calculation time
     beginning = nanoClock::now();
-
-    //std::vector<Matrix96d> covarianceField(arrayLength, Matrix96d::Zero());
-    //std::vector<std::vector<Vector96d>> sampleField2(arrayLength, std::vector<Vector96d>(numSamples, Vector96d::Zero()));
-    //std::vector<std::vector<Vector96d>> normalVecField(arrayLength, std::vector<Vector96d>(numSamples, Vector96d::Zero()));
-    //std::vector<Eigen::EigenSolver<Matrix96d>> eigensolverField(arrayLength);
-    //std::vector<std::vector<std::vector<double>>> testVectors(numFields, std::vector<std::vector<double>>(arrayLength, std::vector<double>(3, 0.0)));    
-
-    /* for(int field = 0; field < numFields; field++){
-        vtkSmartPointer<vtkDoubleArray> temptest = vtkSmartPointer<vtkDoubleArray>::New();
-        temptest->DeepCopy((vtkImageData::SafeDownCast(input->GetBlock(field))->GetPointData()->GetScalars()));
-        for(int i = 0; i < arrayLength; i++){
-            double transferTest[3];
-            temptest->GetTuple(i, transferTest);
-            testVectors[field][i][0] = transferTest[0];
-            testVectors[field][i][1] = transferTest[1];
-            testVectors[field][i][2] = transferTest[2];
-        }
-    } */
 
     cellValues = vtkDoubleArray::New();
     cellValues->SetNumberOfComponents(1);
@@ -204,162 +180,6 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
 
     return 1;
 }
-    
-
-    /* //Summing up the vectors
-    cout << "Calculating mean vectors..." << endl;
-    for(int fieldIndex = 0; fieldIndex < numFields; fieldIndex++){
-
-        vtkSmartPointer<vtkDoubleArray> temp = vtkSmartPointer<vtkDoubleArray>::New();
-        temp->ShallowCopy((vtkImageData::SafeDownCast(input->GetBlock(fieldIndex))->GetPointData()->GetScalars()));
-        
-        for(int currentVec = (offsetZ+ offsetY + 1); currentVec < (arrayLength - (((offsetZ * 2) + (offsetY*2)) + 2)); currentVec++){
-            
-            if((currentVec+2) % gridResolution[0] == 0 or (currentVec+1) % gridResolution[0] == 0 or currentVec % gridResolution[0] == 0 or 
-                currentVec % offsetZ < gridResolution[0] or currentVec % offsetZ >= (offsetZ - (gridResolution[0]*2))){
-                continue; // Cell at the edge of the field, do nothing
-            }
-            std::set<int> cellIndices; //set only contains a single instance of any entitiy
-            int cellNodeIndices[8] = {currentVec, currentVec+1, currentVec+offsetY, currentVec+offsetY+1, currentVec+offsetZ, currentVec+offsetZ+1,
-                                        currentVec+offsetZ+offsetY, currentVec+offsetZ+offsetY+1};
-            for (int currentPoint = 0; currentPoint < 8; currentPoint++){
-                int point = cellNodeIndices[currentPoint];
-                int adjacentPoints[7] = {point, (point - 1), (point + 1), (point - offsetY), (point + offsetY), (point - offsetZ), (point + offsetZ)};
-                //get indices of cell nodes and adjacent points
-                for(int i = 0; i < 7; i++){
-                    cellIndices.insert(adjacentPoints[i]);
-                }
-            }
-            int c = 0;
-            for(auto i = cellIndices.begin(); i != cellIndices.end(); i++, c++){
-                double transferVector[3];
-                int ind = *i;
-                //Calculating mean vec
-                temp->GetTuple(ind, transferVector);
-                meanVectors[currentVec][c*3] += (transferVector[0] / numFields);
-                meanVectors[currentVec][(c*3)+1] += (transferVector[1] / numFields);
-                meanVectors[currentVec][(c*3)+2] += (transferVector[2] / numFields);
-
-                accumulatedVecField[fieldIndex][currentVec](c*3) = transferVector[0];
-                accumulatedVecField[fieldIndex][currentVec]((c*3)+1) = transferVector[1];
-                accumulatedVecField[fieldIndex][currentVec]((c*3)+2) = transferVector[2];
-            }    
-        }
-    }
-    cout << "Done." << endl;
-
-    cout << "Calculating Eigenvector Matrices..." << endl;
-    //int skipped = 0;
-    int calculated = 0;
-    nanoClock::time_point eigenTimeStart = nanoClock::now();
-    #pragma omp parallel for
-    for(int cellIndex = 0; cellIndex < arrayLength; cellIndex++){
-        calculated++;
-        if(calculated % 1000 == 0){
-            nanoClock::time_point eigenTimeEnd = nanoClock::now();
-            std::chrono::duration<double> eigenTime = eigenTimeEnd - eigenTimeStart;
-            cout << "Calculated " << calculated << " Eigenvectors/Cholesky decompositions. The last 1k calculations took " << eigenTime.count() << "s." << endl;
-            eigenTimeStart = nanoClock::now();
-        }
-        Matrix96d covarMat = Matrix96d::Zero();
-        
-        for(int fieldIndex = 0; fieldIndex < numFields; fieldIndex++){
-            Vector96d transferVec = accumulatedVecField[fieldIndex][cellIndex] - meanVectors[cellIndex];
-            covarMat += (transferVec * transferVec.transpose()) / numFields;
-        }
-
-        //covarianceField[cellIndex] = covarMat;
-
-        if(useCholesky){
-            Eigen::LLT<Matrix96d> cholesky(covarMat);
-            choleskyField[cellIndex] = cholesky.matrixU();
-        
-        } else {
-            Eigen::EigenSolver<Matrix96d> eigenMat(covarMat, true);
-            //eigensolverField[cellIndex] = eigenMat;
-            Matrix96c scaledEigenvecs = Matrix96c::Zero();
-            for(int eigenVec = 0; eigenVec < 96; eigenVec++){
-                //eigenvectors scaled by their eigenvalues
-                scaledEigenvecs.col(eigenVec) = eigenMat.eigenvectors().col(eigenVec) * eigenMat.eigenvalues().row(eigenVec);
-            }
-            eigenvectorField[cellIndex] = scaledEigenvecs;
-        }
-    }
-    cout << "Done." << endl;
-    //cout << "Skipped " << skipped << " calculations, " << (double(skipped)/arrayLength)*100 << "%" << endl;
-
-    if(useRandomSeed){
-        nanoClock::duration d = nanoClock::now() - beginning;
-        unsigned seed = d.count();
-        gen.seed(seed);
-    } else {
-        this->gen.seed(12);
-    }
-    //Monte Carlo Sampling
-    cout << "Generating Monte Carlo Samples..." << endl;
-    #pragma omp parallel for
-    for(int cellIndex = 0; cellIndex < arrayLength; cellIndex++){
-        
-        for (int sampleIteration = 0; sampleIteration < numSamples; sampleIteration++){
-            
-            Vector96d normalVec = generateNormalDistributedVec();
-            //normalVecField[cellIndex]d[sampleIteration] = normalVec;
-            if(useCholesky){
-                Vector96d sample = (choleskyField[cellIndex].transpose() * normalVec) + meanVectors[cellIndex];
-                sampleField[cellIndex][sampleIteration] = sample;
-            } else {
-                Vector96c sample = (eigenvectorField[cellIndex] * normalVec.cast<std::complex<double>>()) + meanVectors[cellIndex].cast<std::complex<double>>();
-                sampleField[cellIndex][sampleIteration] = sample.real();
-            }
-        }
-    }
-    cout << "Done." << endl;
-
-
-
-    cellValues = vtkDoubleArray::New();
-    cellValues->SetNumberOfComponents(1);
-    cellValues->SetNumberOfTuples(arrayLength);
-    cellValues->SetName(this->cellValuesName);
-    int parallel;
-    double frequency;
-
-    //Calculating parallel vectors in cells
-    cout << "Computing Parallel Vectors..." << endl;
-    for(int cellIndex = 0; cellIndex < arrayLength; cellIndex++){
-        parallel = 0;
-        frequency = 0.0;
-        for(int sample = 0; sample < numSamples; sample++){
-            bool hasParallel = false;
-            hasParallel = computeParallelVectors(sampleField[cellIndex][sample]);
-            if(hasParallel){
-                parallel++;
-                //cout << "Found parallel vectors" << endl;
-            }
-        }
-        frequency = double(parallel) / double(numSamples);
-        if (frequency > 0){
-            cout << cellIndex << ": " << frequency << " - " << parallel << " - " << numSamples << endl;
-        }
-        cellValues->SetTuple1(cellIndex, frequency);
-    }
-    cout << "Done." << endl;
-
-    vtkSmartPointer<vtkImageData> celldata = vtkSmartPointer<vtkImageData>::New();
-    celldata->CopyStructure(data);
-    celldata->GetPointData()->AddArray(cellValues);
-
-    vtkInformation *outInfo = outputVector->GetInformationObject(0);
-    vtkDataObject *output = vtkDataObject::SafeDownCast(outInfo->Get(vtkDataObject::DATA_OBJECT()));
-
-    output->ShallowCopy(celldata);
-    auto t_end = nanoClock::now();
-    std::chrono::duration<double> durationTime = t_end - beginning;
-
-    std::cout << "Uncertain Vortex Core Line calculation finished in " << durationTime.count() << " s." << std::endl;
-
-    return 1; */
-//}
 
 bool UncertainVortexCores::isCloseToEdge(int index){
     bool isClose = false;
@@ -480,13 +300,12 @@ bool UncertainVortexCores::computeParVectorsInCell(std::vector<std::tuple<Vector
                 isComplex = interpolatedJacobiIsComplex(jac1, jac2, jac3, s[par], t[par]);
             }
         }
-
         if(isComplex){
             faceWithPar++;
         }
     }
 
-    if (faceWithPar > 1){
+    if (faceWithPar > 1){ //at least two sides of the cell need a detection for the cell to be marked
         return true;
     } else {
         return false;
@@ -495,7 +314,7 @@ bool UncertainVortexCores::computeParVectorsInCell(std::vector<std::tuple<Vector
 
 int UncertainVortexCores::computeParallelOnCellface(std::vector<Vector3d> cellfaceVel, std::vector<Vector3d> cellfaceAcc, double *s, double *t){
 
-    //now using linalg because of original code and efficiency
+    //now using linalg because of original code of the parallel vectors implementation
     vec3 v0 = {cellfaceVel[0][0], cellfaceVel[0][1], cellfaceVel[0][2]};
     vec3 v1 = {cellfaceVel[1][0], cellfaceVel[1][1], cellfaceVel[1][2]};
     vec3 v2 = {cellfaceVel[2][0], cellfaceVel[2][1], cellfaceVel[2][2]};
@@ -584,7 +403,6 @@ int UncertainVortexCores::computeParallelOnCellface(std::vector<Vector3d> cellfa
 
             if (nx != 0.0){
                 //local coords in triangle
-
                 ss = ny / nx;
                 tt = nz / nx;
 
@@ -603,7 +421,6 @@ int UncertainVortexCores::computeParallelOnCellface(std::vector<Vector3d> cellfa
 }
 
 bool UncertainVortexCores::interpolatedJacobiIsComplex(Matrix3d jac1, Matrix3d jac2, Matrix3d jac3, double s, double t){
-
 
     vec3 A;
     vec3 B;
