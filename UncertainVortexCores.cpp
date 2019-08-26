@@ -2,26 +2,22 @@
 
 vtkStandardNewMacro(UncertainVortexCores);
 
-UncertainVortexCores::UncertainVortexCores() {
-
+UncertainVortexCores::UncertainVortexCores(){
     this->cellValuesName = (char *) "Vortex Core Probability";
     this->SetNumberOfInputPorts(1);
     this->SetNumberOfOutputPorts(1);
-    this->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS,
-                                 vtkDataSetAttributes::VECTORS);
+    this->SetInputArrayToProcess(0, 0, 0, vtkDataObject::FIELD_ASSOCIATION_POINTS, vtkDataSetAttributes::VECTORS);
 }
 
-int UncertainVortexCores::FillInputPortInformation(int port, vtkInformation *info) {
-    
-    if (port == 0) {
+int UncertainVortexCores::FillInputPortInformation(int port, vtkInformation *info){
+    if (port == 0){
         info->Set(vtkAlgorithm::INPUT_REQUIRED_DATA_TYPE(), "vtkDataObject");
         return 1;
     }
     return 0;
 }
 
-int UncertainVortexCores::FillOutputPortInformation(int port, vtkInformation *info) { //add more outputs if needed
-    
+int UncertainVortexCores::FillOutputPortInformation(int port, vtkInformation *info){
     if (port == 0) {
         info->Set(vtkDataObject::DATA_TYPE_NAME(), "vtkImageData");
         return 1;
@@ -29,8 +25,7 @@ int UncertainVortexCores::FillOutputPortInformation(int port, vtkInformation *in
     return 0;
 }
 
-int UncertainVortexCores::RequestUpdateExtent(vtkInformation *, vtkInformationVector **inputVector, vtkInformationVector *outputVector) {
-    
+int UncertainVortexCores::RequestUpdateExtent(vtkInformation *, vtkInformationVector **inputVector, vtkInformationVector *outputVector){
     vtkInformation *outInfo = outputVector->GetInformationObject(0);
     vtkInformation *inInfo = inputVector[0]->GetInformationObject(0);
 
@@ -40,18 +35,15 @@ int UncertainVortexCores::RequestUpdateExtent(vtkInformation *, vtkInformationVe
         int numInTimes = inInfo->Length(vtkStreamingDemandDrivenPipeline::TIME_STEPS());
         inInfo->Set(vtkMultiTimeStepAlgorithm::UPDATE_TIME_STEPS(), inTimes, numInTimes);
     }
-    
-    return 1;
+    return 0;
 }
 
-int UncertainVortexCores::RequestInformation(vtkInformation *, vtkInformationVector **inputVector,
-                                                 vtkInformationVector *outputVector) {
-    return 1;
+int UncertainVortexCores::RequestInformation(vtkInformation *, vtkInformationVector **inputVector, vtkInformationVector *outputVector){
+    return 0;
 }
 
 
-int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **inputVector,
-                                          vtkInformationVector *outputVector) {
+int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **inputVector, vtkInformationVector *outputVector){
     
     vtkInformation *inInfo = inputVector[0]->GetInformationObject(0);
     //moved here from RequestUpdateExtent, maybe move somewhere else 
@@ -71,8 +63,9 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
     int coutStep = int(double(arrayLength) / 100.0);
     if(coutStep == 0) coutStep = 1;
 
-    //clock for random seed and calculation time
-    beginning = nanoClock::now();
+    //clock for calculation time
+    this->beginning = nanoClock::now();
+    this->gen.seed = this->seed;
 
     cellValues = vtkDoubleArray::New();
     cellValues->SetNumberOfComponents(1);
@@ -87,7 +80,7 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
 
         ++calcMean;
         if(calcMean % coutStep == 0){
-            std::chrono::duration<double> calcTime = beginning - nanoClock::now();
+            std::chrono::duration<double> calcTime = this->beginning - nanoClock::now();
             int prog = int((double(calcMean) / double(arrayLength))*100);
             double ETR = (double(calcTime.count())/prog) * (100 - prog);
             cout << '\r' << std::flush;
@@ -102,11 +95,11 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
         std::set<int> indices; //set only contains a single instance of any entitiy
 
         int nodes[8] = {pointIndex, pointIndex+1, pointIndex+offsetY, pointIndex+offsetY+1, pointIndex+offsetZ,
-                            pointIndex+offsetZ+1, pointIndex+offsetY+offsetZ, pointIndex+offsetY+offsetZ+1};
+                            pointIndex+offsetZ+1, pointIndex+offsetY+offsetZ, pointIndex+offsetY+offsetZ+1}; //get every node of current cell
         
         for (int i = 0; i < 8; i++){
             int point = nodes[i];
-            int adjacentPoints[7] = {point, point-1, point+1, point-offsetY, point+offsetY, point-offsetZ, point+offsetZ};
+            int adjacentPoints[7] = {point, point-1, point+1, point-offsetY, point+offsetY, point-offsetZ, point+offsetZ}; //get adjacent nodes of every cell node
             for(int j = 0; j < 7; j++){
                 indices.insert(adjacentPoints[j]);
             }
@@ -124,9 +117,9 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
                 meanVector[(c*3)+1] += transfer[1];
                 meanVector[(c*3)+2] += transfer[2];
 
-                neighborhood[fieldIndex][c*3]= transfer[0];
-                neighborhood[fieldIndex][(c*3)+1]= transfer[1];
-                neighborhood[fieldIndex][(c*3)+2]= transfer[2];
+                neighborhood[fieldIndex][c*3] = transfer[0];
+                neighborhood[fieldIndex][(c*3)+1] = transfer[1];
+                neighborhood[fieldIndex][(c*3)+2] = transfer[2];
             }
         }
         meanVector = meanVector / double(numFields);
@@ -139,26 +132,29 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
 
         covarMat = covarMat / double(numFields);
 
-        if(useCholesky){
+        if(this->decompType == 0){
             Eigen::LDLT<Matrix96d> cholesky(covarMat);
 
             Matrix96d D = Matrix96d::Identity();
             D.diagonal() = cholesky.vectorD();
 
             decomposition = cholesky.matrixL() * D;
-        } else {
+        }else if(this->decompType == 1){
             Eigen::EigenSolver<Matrix96d> eigenMat(covarMat, true);
 
             Matrix96c evDiag = Matrix96c::Identity();
             evDiag.diagonal() = eigenMat.eigenvalues();
 
             decomposition = (eigenMat.eigenvectors() * evDiag).real(); //very small (e.g. 10^-16) complex parts are possible, taking real part just to be sure
+        } else {
+            std::cout << "Something went terribly wrong, terminating!" << endl;
+            return 1;
         }
 
         int prob = 0;
         for (int sampleIteration = 0; sampleIteration < numSamples; sampleIteration++){
             Vector96d normalVec = generateNormalDistributedVec();
-            Vector96d sample = decomposition * normalVec + meanVector;
+            Vector96d sample = (decomposition * normalVec) + meanVector;
             if(computeParallelVectors(sample)) prob++;
         }
         double frequency = double(prob) / double(numSamples);
@@ -178,7 +174,7 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
 
     std::cout << "Uncertain Vortex Core Line calculation finished in " << durationTime.count() << " s." << std::endl;
 
-    return 1;
+    return 0;
 }
 
 bool UncertainVortexCores::isCloseToEdge(int index){
@@ -202,7 +198,7 @@ bool UncertainVortexCores::isCloseToEdge(int index){
 
 Vector96d UncertainVortexCores::generateNormalDistributedVec(){
 
-    std::uniform_real_distribution<double> randomVecEntry(0.00001, 1.0); 
+    std::uniform_real_distribution<double> randomVecEntry(0.0, 1.0); 
     
     Vector96d normalVec = Vector96d::Zero();
 
@@ -230,8 +226,8 @@ std::vector<std::tuple<Vector3d, Matrix3d>> UncertainVortexCores::calculateJacob
         points[point][1] = sampleVector[(point*3)+1];
         points[point][2] = sampleVector[(point*3)+2];
     }
-    //vectors in sampleVector are sorted ascending by their indices in the original vectorfields, nodeIndices has the indices of the cell nodes at the first place of every subarray,
-    //followed by x+1, x-1, y+1, y-1, z+1, z-1 for easy jacobi calculation, the order of cell nodes followes the spatial arrangement from bottom left to top right
+    //vectors in sampleVector are sorted ascending by their indices in the original vector fields, nodeIndices has the indices of the cell nodes as the first entry of every subarray,
+    //followed by the neighborhood x+1, x-1, y+1, y-1, z+1, z-1 for easy jacobi calculation, the order of cell nodes followes the spatial arrangement from bottom left to top right
     int nodeIndices[8][7] = {{7,8,6,11,4,19,0},{8,9,7,12,5,20,1},{11,12,10,14,7,23,2},{12,13,11,15,8,24,3},
                             {19,20,18,23,16,28,7},{20,21,19,24,17,29,8},{23,24,22,26,19,30,11},{24,25,23,27,20,31,12}};
 

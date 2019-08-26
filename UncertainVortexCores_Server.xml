@@ -3,14 +3,14 @@
         <!-- ================================================================== -->
         <SourceProxy name="UncertainVortexCores" class="UncertainVortexCores" label="Uncertain Vortex Cores">
             <Documentation
-                    long_help="Computes Vortex Cores of Uncertain Vectorfields."
-                    short_help="Computes Vortex Cores.">
+                long_help="Computes Vortex Cores of Uncertain Vectorfields."
+                short_help="Computes Vortex Cores.">
             </Documentation>
 
             <InputProperty
-                    name="Input"
-                    port_index="0"
-                    command="SetInputConnection">
+                name="Input"
+                port_index="0"
+                command="SetInputConnection">
                 <ProxyGroupDomain name="groups">
                     <Group name="sources"/>
                     <Group name="filters"/>
@@ -19,46 +19,44 @@
                     <DataType value="vtkImageData"/>
                 </DataTypeDomain>
                 <InputArrayDomain name="input_array1" attribute_type="point" number_of_components="3">
-	                <RequiredProperties>
+                    <RequiredProperties>
                         <Property name="SelectInputVectors" function="FieldDataSelection"/>
                     </RequiredProperties>
-	            </InputArrayDomain>
+                </InputArrayDomain>
             </InputProperty>
 
             <IntVectorProperty
-                    name="Number Samples"
-                    command="SetnumSamples"
-                    number_of_elements="1"
-                    default_values="20">
-        <Documentation>
-        Number of Monte-Carlo-Samples
-        </Documentation>
+                name="Number Samples"
+                command="SetnumSamples"
+                number_of_elements="1"
+                default_values="20">
+                <Documentation>
+                    Number of Monte-Carlo samples for each cell.
+                </Documentation>
             </IntVectorProperty>
 
             <IntVectorProperty
-                    name="Use Random Seed"
-                    command="SetuseRandomSeed"
-                    number_of_elements="1"
-                    default_values="0">
-                <BooleanDomain name="bool"/>
-
-        <Documentation>
-        Use a random seed for the sample generation
-        </Documentation>
-
+                name="Seed"
+                command="Setseed"
+                number_of_elements="1"
+                default_values="42">
+                <Documentation>
+                    Seed for the generation of the Monte-Carlo samples.
+                </Documentation>
             </IntVectorProperty>
 
             <IntVectorProperty
-                    name="Use Cholesky"
-                    command="SetuseCholesky"
-                    number_of_elements="1"
-                    default_values="0">
-                <BooleanDomain name="bool"/>
-
-        <Documentation>
-        Use Cholesky decomposition instead of eigenvectormatrices for the Monte-Carlo sampling
-        </Documentation>
-
+                name="Decomposition"
+                command="SetdecompType"
+                number_of_elements="1"
+                default_values="1">
+                <EnumerationDomain name="enum">
+                    <Entry value="0" text="Cholesky"/>
+                    <Entry value="1" text="Eigendecomp"/>
+                </EnumerationDomain>
+                <Documentation>
+                    Decomposition used for the generation of the Monte-Carlo samples.
+                </Documentation>
             </IntVectorProperty>
 
             <OutputPort name="Vortex Core Lines" index="0" id="port0"/>

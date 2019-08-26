@@ -28,7 +28,6 @@
 typedef Eigen::Matrix<double,3,1> Vector3d;
 typedef Eigen::Matrix<double,3,3> Matrix3d;
 typedef Eigen::Matrix<double,96,1> Vector96d;
-typedef Eigen::Matrix<std::complex<double>,96,1> Vector96c;
 typedef Eigen::Matrix<double,96,96> Matrix96d;
 typedef Eigen::Matrix<std::complex<double>,96,96> Matrix96c;
 typedef std::chrono::high_resolution_clock nanoClock;
@@ -42,12 +41,12 @@ public:
     vtkSetMacro(numSamples, int);
     vtkGetMacro(numSamples, int);
 
-    vtkSetMacro(useRandomSeed, bool);
-    vtkGetMacro(useRandomSeed, bool);
+    vtkSetMacro(seed, int);
+    vtkGetMacro(seed, int);
 
-    vtkSetMacro(useCholesky, bool);
-    vtkGetMacro(useCholesky, bool);
-
+    vtkSetMacro(decompType, int);
+    vtkGetMacro(decompType, int);
+    
 protected:
     UncertainVortexCores();
     ~UncertainVortexCores() {};
@@ -74,8 +73,8 @@ private:
     int offsetZ;
     nanoClock::time_point beginning;
     char *cellValuesName;
-    bool useRandomSeed;
-    bool useCholesky;
+    int seed;
+    int decompType;
     std::mt19937 gen;
 
     Vector96d generateNormalDistributedVec();
