@@ -65,7 +65,7 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
 
     //clock for calculation time
     this->beginning = nanoClock::now();
-    this->gen.seed = this->seed;
+    this->gen.seed(this->seed);
 
     cellValues = vtkDoubleArray::New();
     cellValues->SetNumberOfComponents(1);
