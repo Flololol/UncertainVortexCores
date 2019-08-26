@@ -39,7 +39,7 @@ int UncertainVortexCores::RequestUpdateExtent(vtkInformation *, vtkInformationVe
 }
 
 int UncertainVortexCores::RequestInformation(vtkInformation *, vtkInformationVector **inputVector, vtkInformationVector *outputVector){
-    return 0;
+    return 1;
 }
 
 
@@ -148,7 +148,7 @@ int UncertainVortexCores::RequestData(vtkInformation *, vtkInformationVector **i
             decomposition = (eigenMat.eigenvectors() * evDiag).real(); //very small (e.g. 10^-16) complex parts are possible, taking real part just to be sure
         } else {
             std::cout << "Something went terribly wrong, terminating!" << endl;
-            return 1;
+            continue;
         }
 
         int prob = 0;
