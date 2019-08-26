@@ -35,7 +35,7 @@ int UncertainVortexCores::RequestUpdateExtent(vtkInformation *, vtkInformationVe
         int numInTimes = inInfo->Length(vtkStreamingDemandDrivenPipeline::TIME_STEPS());
         inInfo->Set(vtkMultiTimeStepAlgorithm::UPDATE_TIME_STEPS(), inTimes, numInTimes);
     }
-    return 0;
+    return 1;
 }
 
 int UncertainVortexCores::RequestInformation(vtkInformation *, vtkInformationVector **inputVector, vtkInformationVector *outputVector){
